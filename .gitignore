@@ -1,3 +1,4 @@
 .claude/
 PROJECT.md
 build/
+*.bin

@@ -1,45 +1,33 @@
 #include <iostream>
-#include <fstream>
-#include <cstdint>
+#include "pager.hpp"
 
 int main()
 {
-    std::int32_t out = 1;
-    std::int32_t out2 = 256;
+    auto create_result = Pager::create("nfa.bin");
+
+    if (!create_result)
     {
-        std::ofstream f("demo.bin", std::ios::binary);
-        f.write(reinterpret_cast<char *>(&out), sizeof(out));
-        f.write(reinterpret_cast<char *>(&out2), sizeof(out2));
-    }
+        std::cout << "Create failed: "
+                  << static_cast<int>(create_result.error())
+                  << std::endl;
 
-    std::int32_t in = 0;
-    std::int32_t in2 = 0;
-
-    std::ifstream g("demo.bin", std::ios::binary);
-
-    if (!g.is_open())
-    {
-        std::cout << "Could not open file\n";
         return 1;
     }
 
-    g.read(reinterpret_cast<char *>(&in), sizeof(in));
+    std::cout << "Create successful" << std::endl;
 
-    if (g.fail())
+    auto open_result = Pager::open("missing.bin");
+
+    if (!open_result)
     {
-        std::cout << "Read 1 failed\n";
+        std::cout << "Open failed: "
+                  << static_cast<int>(open_result.error())
+                  << std::endl;
+
         return 1;
     }
 
-    g.read(reinterpret_cast<char *>(&in2), sizeof(in2));
+    std::cout << "Open successful" << std::endl;
 
-    if (g.fail())
-    {
-        std::cout << "Read 2 failed\n";
-        return 1;
-    }
-
-    std::cout << in << '\n';
-    std::cout << in2 << '\n';
     return 0;
 }
