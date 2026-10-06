@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <filesystem>
 #include <cstdint>
 #include <fstream>
 #include <expected>
@@ -9,6 +10,7 @@ enum class PagerError {
     INVALID_PAGE,
     READ_FAILED,
     WRITE_FAILED,
+    PAGE_ALLOCATE_FAILED,
 
     FILE_OPEN_FAILED,
     FILE_CREATE_FAILED,
@@ -23,6 +25,7 @@ enum class PagerError {
 class Pager
 {
 private:
+
     static constexpr std::size_t MAGIC_SIZE = 8;
 
     static constexpr char MAGIC[MAGIC_SIZE] = {
@@ -30,13 +33,15 @@ private:
     };
 
     static constexpr std::uint32_t VERSION = 1;
-    
+
     std::fstream file;
+    std::filesystem::path filename;
     
     bool pageExists(std::uint64_t page_number) const;
+    std::streamoff pageOffset(const std::uint64_t page_number) const;
 
     //Constructor
-    explicit Pager(std::fstream&& file);
+    explicit Pager(std::fstream&& file, std::filesystem::path filename);
 
 public:
     static constexpr std::uint32_t PAGE_SIZE = 4096;

@@ -1,10 +1,12 @@
 #include "pager.hpp"
-#include <filesystem>
-#include <array>
 #include <cstring>
 #include <utility>
 
-Pager::Pager(std::fstream&& file) : file(std::move(file))  {
+Pager::Pager(std::fstream&& file, std::filesystem::path filename) 
+
+: file(std::move(file)), filename(std::move(filename))  
+
+{
     
 }
 
@@ -85,5 +87,82 @@ std::expected<Pager, PagerError> Pager::open(const char* filename) {
     if(page_size != PAGE_SIZE) return std::unexpected(PagerError::FILE_CORRUPTED);
 
     // Construct Pager
-    return Pager(std::move(file));
+    return Pager(std::move(file), filename);
+}
+
+std::uint64_t Pager::pageCount() const {
+    std::uintmax_t file_size = std::filesystem::file_size(filename);
+
+    std::uint64_t count = static_cast<std::uint64_t> (file_size) / PAGE_SIZE;
+
+    if(count == 0) return 0; // uint64_t wraps (bcz it's unsigned). so -1 becomes 18,446,744,073,709,551,615 making every page number valid
+
+    return count - 1;
+}
+
+std::expected<void, PagerError> Pager::readPage(std::uint64_t page_number, std::array<char, PAGE_SIZE>& buffer) {
+    if(!pageExists(page_number)) return std::unexpected(PagerError::INVALID_PAGE);
+
+    file.clear(); // clearing any previous operation failed state
+
+    file.seekg(pageOffset(page_number), std::ios::beg);
+
+    if(file.fail()) return std::unexpected(PagerError::READ_FAILED);
+
+    file.read(buffer.data(), buffer.size());
+
+    if(file.fail()) return std::unexpected(PagerError::READ_FAILED);
+
+    return {};
+}
+
+std::expected<std::uint64_t, PagerError> Pager::allocatePage() {
+    std::array<char, PAGE_SIZE> page = {};
+
+    std::uint64_t page_number = pageCount();
+
+    file.clear();
+    file.seekp(0, std::ios::end); // Putting the pointer at the end
+
+    if(file.fail()) return std::unexpected(PagerError::PAGE_ALLOCATE_FAILED);
+
+    file.write(page.data(), page.size());
+
+    if(file.fail()) return std::unexpected(PagerError::PAGE_ALLOCATE_FAILED);
+
+    file.flush();
+
+    if(file.fail()) return std::unexpected(PagerError::PAGE_ALLOCATE_FAILED);
+
+
+    return page_number;
+}
+
+std::expected<void, PagerError> Pager::writePage(std::uint64_t page_number, const std::array<char, PAGE_SIZE> &buffer) {
+    if(!pageExists(page_number)) return std::unexpected(PagerError::INVALID_PAGE);
+
+    file.clear();
+    file.seekp(pageOffset(page_number), std::ios::beg);
+
+    if(file.fail()) return std::unexpected(PagerError::WRITE_FAILED);
+
+    file.write(buffer.data(), buffer.size());
+
+    if(file.fail()) return std::unexpected(PagerError::WRITE_FAILED);
+
+    file.flush();
+
+    if(file.fail()) return std::unexpected(PagerError::WRITE_FAILED);
+
+    return {};
+}
+
+//Helpers
+
+bool Pager::pageExists(std::uint64_t page_number) const {    
+    return page_number < pageCount();
+}
+
+std::streamoff Pager::pageOffset(const std::uint64_t page_number) const {
+    return static_cast<std::streamoff>(page_number + 1) * static_cast<std::streamoff> (PAGE_SIZE);
 }

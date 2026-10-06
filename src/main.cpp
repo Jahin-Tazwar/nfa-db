@@ -1,33 +1,37 @@
 #include <iostream>
+
 #include "pager.hpp"
 
 int main()
 {
-    auto create_result = Pager::create("nfa.bin");
+    auto createResult = Pager::create("nfa.bin");
 
-    if (!create_result)
+    if (!createResult)
     {
         std::cout << "Create failed: "
-                  << static_cast<int>(create_result.error())
+                  << static_cast<int>(createResult.error())
                   << std::endl;
 
         return 1;
     }
 
-    std::cout << "Create successful" << std::endl;
+    auto pagerResult = Pager::open("nfa.bin");
 
-    auto open_result = Pager::open("missing.bin");
-
-    if (!open_result)
+    if (!pagerResult)
     {
         std::cout << "Open failed: "
-                  << static_cast<int>(open_result.error())
+                  << static_cast<int>(pagerResult.error())
                   << std::endl;
 
         return 1;
     }
 
-    std::cout << "Open successful" << std::endl;
+    Pager& pager = *pagerResult;
+
+    std::cout << "Database opened successfully\n";
+    std::cout << "Data pages: "
+              << pager.pageCount()
+              << std::endl;
 
     return 0;
 }

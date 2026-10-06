@@ -2,6 +2,7 @@
 #include <fstream>
 #include <filesystem>
 #include <cstdint>
+#include <array>
 
 #include "pager.hpp"
 
@@ -97,6 +98,7 @@ int main()
         );
 
         const char junk[100] = {};
+
         file.write(junk, sizeof(junk));
         file.close();
 
@@ -122,6 +124,7 @@ int main()
         );
 
         const char zeros[Pager::PAGE_SIZE] = {};
+
         file.write(zeros, sizeof(zeros));
         file.close();
 
@@ -153,6 +156,7 @@ int main()
             );
 
             const char extra[904] = {};
+
             file.write(extra, sizeof(extra));
             file.close();
 
@@ -192,8 +196,6 @@ int main()
 
             std::uint32_t badVersion = 2;
 
-            // Magic:   bytes 0-7
-            // Version: bytes 8-11
             file.seekp(8, std::ios::beg);
 
             file.write(
@@ -239,7 +241,6 @@ int main()
 
             std::uint32_t badPageSize = 8192;
 
-            // Page size: bytes 12-15
             file.seekp(12, std::ios::beg);
 
             file.write(
@@ -336,7 +337,7 @@ int main()
         std::filesystem::remove(testFile);
     }
 
-    // 11. Exactly one valid header page
+    // 11. Header only means zero data pages
     {
         std::filesystem::remove(testFile);
 
@@ -348,10 +349,12 @@ int main()
         {
             auto result = Pager::open(testFile);
 
-            bool passed = result.has_value();
+            bool passed =
+                result &&
+                result->pageCount() == 0;
 
             if (!printResult(
-                    "exactly one valid header page",
+                    "header only has zero data pages",
                     passed))
             {
                 failures++;
@@ -361,5 +364,402 @@ int main()
         std::filesystem::remove(testFile);
     }
 
-    return failures == 0 ? 0 : 1;
+    // 12. Allocate first data page
+    {
+        std::filesystem::remove(testFile);
+
+        if (!createTestDatabase(testFile))
+        {
+            failures++;
+        }
+        else
+        {
+            auto result = Pager::open(testFile);
+
+            bool passed = false;
+
+            if (result)
+            {
+                auto allocateResult =
+                    result->allocatePage();
+
+                passed =
+                    allocateResult &&
+                    allocateResult.value() == 0 &&
+                    result->pageCount() == 1;
+            }
+
+            if (!printResult(
+                    "allocate first data page",
+                    passed))
+            {
+                failures++;
+            }
+        }
+
+        std::filesystem::remove(testFile);
+    }
+
+    // 13. Allocate multiple data pages
+    {
+        std::filesystem::remove(testFile);
+
+        if (!createTestDatabase(testFile))
+        {
+            failures++;
+        }
+        else
+        {
+            auto result = Pager::open(testFile);
+
+            bool passed = false;
+
+            if (result)
+            {
+                auto first = result->allocatePage();
+                auto second = result->allocatePage();
+
+                passed =
+                    first &&
+                    second &&
+                    first.value() == 0 &&
+                    second.value() == 1 &&
+                    result->pageCount() == 2;
+            }
+
+            if (!printResult(
+                    "allocate multiple data pages",
+                    passed))
+            {
+                failures++;
+            }
+        }
+
+        std::filesystem::remove(testFile);
+    }
+
+    // 14. Truncated file does not wrap page count
+    {
+        std::filesystem::remove(testFile);
+
+        if (!createTestDatabase(testFile))
+        {
+            failures++;
+        }
+        else
+        {
+            auto result = Pager::open(testFile);
+
+            bool passed = false;
+
+            if (result)
+            {
+                std::filesystem::resize_file(
+                    testFile,
+                    100
+                );
+
+                passed =
+                    result->pageCount() == 0;
+            }
+
+            if (!printResult(
+                    "truncated file does not wrap page count",
+                    passed))
+            {
+                failures++;
+            }
+        }
+
+        std::filesystem::remove(testFile);
+    }
+
+    // 15. Cannot read a data page when none exists
+    {
+        std::filesystem::remove(testFile);
+
+        if (!createTestDatabase(testFile))
+        {
+            failures++;
+        }
+        else
+        {
+            auto result = Pager::open(testFile);
+
+            bool passed = false;
+
+            if (result)
+            {
+                std::array<char, Pager::PAGE_SIZE> buffer{};
+
+                auto readResult =
+                    result->readPage(0, buffer);
+
+                passed =
+                    !readResult &&
+                    readResult.error() == PagerError::INVALID_PAGE;
+            }
+
+            if (!printResult(
+                    "read page when no data pages exist",
+                    passed))
+            {
+                failures++;
+            }
+        }
+
+        std::filesystem::remove(testFile);
+    }
+
+    // 16. Read first data page
+    {
+        std::filesystem::remove(testFile);
+
+        if (!createTestDatabase(testFile))
+        {
+            failures++;
+        }
+        else
+        {
+            auto result = Pager::open(testFile);
+
+            bool passed = false;
+
+            if (result)
+            {
+                auto allocateResult =
+                    result->allocatePage();
+
+                if (allocateResult)
+                {
+                    std::array<char, Pager::PAGE_SIZE> buffer{};
+
+                    auto readResult =
+                        result->readPage(0, buffer);
+
+                    passed = readResult.has_value();
+                }
+            }
+
+            if (!printResult(
+                    "read first data page",
+                    passed))
+            {
+                failures++;
+            }
+        }
+
+        std::filesystem::remove(testFile);
+    }
+
+    // 17. Write and read first data page
+    {
+        std::filesystem::remove(testFile);
+
+        if (!createTestDatabase(testFile))
+        {
+            failures++;
+        }
+        else
+        {
+            auto result = Pager::open(testFile);
+
+            bool passed = false;
+
+            if (result)
+            {
+                auto allocateResult =
+                    result->allocatePage();
+
+                if (allocateResult)
+                {
+                    std::array<char, Pager::PAGE_SIZE> writeBuffer{};
+                    writeBuffer.fill('A');
+
+                    auto writeResult =
+                        result->writePage(0, writeBuffer);
+
+                    if (writeResult)
+                    {
+                        std::array<char, Pager::PAGE_SIZE> readBuffer{};
+
+                        auto readResult =
+                            result->readPage(0, readBuffer);
+
+                        passed =
+                            readResult &&
+                            readBuffer[0] == 'A' &&
+                            readBuffer[Pager::PAGE_SIZE - 1] == 'A';
+                    }
+                }
+            }
+
+            if (!printResult(
+                    "write and read first data page",
+                    passed))
+            {
+                failures++;
+            }
+        }
+
+        std::filesystem::remove(testFile);
+    }
+
+    // 18. Cannot read a non-existent data page
+    {
+        std::filesystem::remove(testFile);
+
+        if (!createTestDatabase(testFile))
+        {
+            failures++;
+        }
+        else
+        {
+            auto result = Pager::open(testFile);
+
+            bool passed = false;
+
+            if (result)
+            {
+                auto allocateResult =
+                    result->allocatePage();
+
+                if (allocateResult)
+                {
+                    std::array<char, Pager::PAGE_SIZE> buffer{};
+
+                    auto readResult =
+                        result->readPage(1, buffer);
+
+                    passed =
+                        !readResult &&
+                        readResult.error() == PagerError::INVALID_PAGE;
+                }
+            }
+
+            if (!printResult(
+                    "read non-existent data page",
+                    passed))
+            {
+                failures++;
+            }
+        }
+
+        std::filesystem::remove(testFile);
+    }
+
+    // 19. Write and read multiple data pages
+    {
+        std::filesystem::remove(testFile);
+
+        if (!createTestDatabase(testFile))
+        {
+            failures++;
+        }
+        else
+        {
+            auto result = Pager::open(testFile);
+
+            bool passed = false;
+
+            if (result)
+            {
+                auto first = result->allocatePage();
+                auto second = result->allocatePage();
+
+                if (first && second)
+                {
+                    std::array<char, Pager::PAGE_SIZE> pageA{};
+                    std::array<char, Pager::PAGE_SIZE> pageB{};
+                    std::array<char, Pager::PAGE_SIZE> readA{};
+                    std::array<char, Pager::PAGE_SIZE> readB{};
+
+                    pageA.fill('A');
+                    pageB.fill('B');
+
+                    auto writeA =
+                        result->writePage(0, pageA);
+
+                    auto writeB =
+                        result->writePage(1, pageB);
+
+                    auto readResultA =
+                        result->readPage(0, readA);
+
+                    auto readResultB =
+                        result->readPage(1, readB);
+
+                    passed =
+                        writeA &&
+                        writeB &&
+                        readResultA &&
+                        readResultB &&
+                        readA[0] == 'A' &&
+                        readA[Pager::PAGE_SIZE - 1] == 'A' &&
+                        readB[0] == 'B' &&
+                        readB[Pager::PAGE_SIZE - 1] == 'B';
+                }
+            }
+
+            if (!printResult(
+                    "write and read multiple data pages",
+                    passed))
+            {
+                failures++;
+            }
+        }
+
+        std::filesystem::remove(testFile);
+    }
+
+    // 20. Cannot write to a non-existent data page
+    {
+        std::filesystem::remove(testFile);
+
+        if (!createTestDatabase(testFile))
+        {
+            failures++;
+        }
+        else
+        {
+            auto result = Pager::open(testFile);
+
+            bool passed = false;
+
+            if (result)
+            {
+                std::array<char, Pager::PAGE_SIZE> buffer{};
+                buffer.fill('X');
+
+                auto writeResult =
+                    result->writePage(0, buffer);
+
+                passed =
+                    !writeResult &&
+                    writeResult.error() == PagerError::INVALID_PAGE;
+            }
+
+            if (!printResult(
+                    "write non-existent data page",
+                    passed))
+            {
+                failures++;
+            }
+        }
+
+        std::filesystem::remove(testFile);
+    }
+
+    std::cout << '\n';
+
+    if (failures == 0)
+    {
+        std::cout << "All tests passed.\n";
+        return 0;
+    }
+
+    std::cout << failures
+              << " test(s) failed.\n";
+
+    return 1;
 }
