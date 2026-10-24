@@ -10,7 +10,15 @@ add_library(pager
     src/pager.cpp
 )
 
+add_library(record
+    src/record.cpp
+)
+
 target_include_directories(pager PUBLIC
+    include
+)
+
+target_include_directories(record PUBLIC
     include
 )
 
@@ -21,6 +29,7 @@ add_executable(nfa_db
 
 target_link_libraries(nfa_db PRIVATE
     pager
+    record
 )
 
 # Tests
@@ -28,8 +37,16 @@ add_executable(pager_test
     tests/pager_test.cpp
 )
 
+add_executable(record_test
+    tests/record_test.cpp
+)
+
 target_link_libraries(pager_test PRIVATE
     pager
+)
+
+target_link_libraries(record_test PRIVATE
+    record
 )
 
 enable_testing()
@@ -37,4 +54,9 @@ enable_testing()
 add_test(
     NAME pager_test
     COMMAND pager_test
+)
+
+add_test(
+    NAME record_test
+    COMMAND record_test
 )
